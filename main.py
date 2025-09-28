@@ -47,11 +47,11 @@ def load_world_from_json(filename):
 def main():
     # Load or create a world
     world = load_world_from_json('saved_maps/80x50_basic.json')
-    # world = World(80, 50)
+    # world = World(48, 24)
 
     # Create nations in random locations
     coords = set()
-    while len(coords) < 20:
+    while len(coords) < 10:
         x = random.randint(0, world.width - 1)
         y = random.randint(0, world.height - 1)
         coords.add((x, y))
