@@ -203,7 +203,7 @@ class World:
 				rebellion_attempt = random.random()
 				if nation_id != 0 and nation_id in rebel_threshold and rebel_threshold[nation_id] <= .2 and rebellion_attempt > rebel_threshold[nation_id] and rebellion_attempt < self.solidarity[x, y]:
 					tyrant = self.nation[x, y]
-					self.create_nation(x, y, initial_influence=10.0, initial_solidarity=1)
+					self.create_nation(x, y, initial_influence=10.0, initial_solidarity=self.solidarity[x, y])
 					self.create_rebellion(x, y, threshold=0.4, tyrant_nation=tyrant)
 			
 
