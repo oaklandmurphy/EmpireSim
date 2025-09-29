@@ -51,7 +51,7 @@ def main():
 
     # Create nations in random locations
     coords = set()
-    while len(coords) < 10:
+    while len(coords) < 100:
         x = random.randint(0, world.width - 1)
         y = random.randint(0, world.height - 1)
         coords.add((x, y))

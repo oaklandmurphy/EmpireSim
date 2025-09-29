@@ -25,6 +25,7 @@ class World:
 		self.conquest_difficulty = 2  # Higher means harder to conquer
 		self.solidarity_spread_rate = 0.33  # Chance to copy solidarity from most influential neighbor
 		self.nation_stability = 0.8  # Higher means harder to rebel
+		self.conquest_assimilation_rate = 0.5  # Chance to copy solidarity from conquering nation
 
 		# Generate Perlin noise for each cell
 		self.generate_perlin_noise_on_squaregrid(scale=2, seed=42, attribute='terrain', variability=self.terrain_variablility)
@@ -188,7 +189,7 @@ class World:
 						new_nation = self.nation[nx, ny]
 						new_solidarity = self.solidarity[nx, ny]
 				self.nation[x, y] = new_nation
-				if random.random() < 0.5:
+				if random.random() < self.conquest_assimilation_rate:
 					self.solidarity[x,y] = new_solidarity
 
 	def update_solidarity(self):
@@ -217,7 +218,7 @@ class World:
 
 				nation_id = self.nation[x, y]
 				rebellion_attempt = random.random()
-				if nation_id != 0 and nation_id in rebel_threshold and rebel_threshold[nation_id] <= (1 - self.nation_stability) and rebellion_attempt > rebel_threshold[nation_id] and rebellion_attempt < self.solidarity[x, y]:
+				if nation_id != 0 and nation_id in rebel_threshold and rebel_threshold[nation_id] <= (1 - self.nation_stability) and rebellion_attempt > rebel_threshold[nation_id] and rebellion_attempt < self.solidarity[x, y] and random.random() < 0.1:
 					tyrant = self.nation[x, y]
 					self.create_nation(x, y, initial_influence=10.0, initial_solidarity=self.solidarity[x, y])
 					self.create_rebellion(x, y, threshold=0.4, tyrant_nation=tyrant)
@@ -236,7 +237,7 @@ class World:
 		self.solidarity[center_x, center_y] = initial_solidarity
 		# Assign a random color for this nation
 		if self.num_nations not in self.nation_colors:
-			self.nation_colors[self.num_nations] = tuple(random.randint(40, 220) for _ in range(3))
+			self.nation_colors[self.num_nations] = tuple(random.randint(0, 255) for _ in range(3))
 
 
 	def create_rebellion(self, x, y, threshold, tyrant_nation=0):
