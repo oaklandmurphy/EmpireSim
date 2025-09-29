@@ -13,6 +13,16 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 
 def display_square_grid(squaregrid, cell_size=40):
+    # --- Slider setup ---
+    slider_width = 30
+    slider_height = 200
+    slider_padding = 80  # Increased from 30 to move sliders left
+    slider_labels = [
+        ("Conquest Difficulty", "conquest_difficulty", 1.1, 5.0),
+        ("Nation Stability", "nation_stability", 0.0, 1.0),
+        ("Solidarity Spread", "solidarity_spread_rate", 0.0, 1.0),
+    ]
+    dragging_slider = None
     """
     Display the square grid in a separate pygame window.
     Each cell is drawn as a square. Cell color can be customized by adding a 'color' variable to cell variables.
@@ -23,6 +33,13 @@ def display_square_grid(squaregrid, cell_size=40):
     screen_height = info.current_h
     screen = pygame.display.set_mode((screen_width, screen_height), pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE)
     pygame.display.set_caption("Square Grid Visualization")
+
+    # Now that screen_width and screen_height are defined, set up slider_rects
+    slider_rects = []
+    for i, (label, attr, minv, maxv) in enumerate(slider_labels):
+        x = screen_width - slider_width - slider_padding
+        y = 100 + i * (slider_height + 60)
+        slider_rects.append(pygame.Rect(x, y, slider_width, slider_height))
     glViewport(0, 0, screen_width, screen_height)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
@@ -100,6 +117,14 @@ def display_square_grid(squaregrid, cell_size=40):
                 if event.button == 1:
                     mouse_x, mouse_y = event.pos
                     button_y = screen_height - button_height - button_padding
+                    # Check sliders first
+                    for i, rect in enumerate(slider_rects):
+                        if rect.collidepoint(mouse_x, mouse_y):
+                            dragging_slider = i
+                            attr_clicked = True
+                            break
+                    if not dragging_slider is None:
+                        continue
                     # Check attribute buttons
                     attr_clicked = False
                     for i, attr in enumerate(attributes):
@@ -140,8 +165,16 @@ def display_square_grid(squaregrid, cell_size=40):
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     dragging = False
+                    dragging_slider = None
             elif event.type == pygame.MOUSEMOTION:
-                if dragging and last_mouse_pos:
+                if dragging_slider is not None:
+                    # Update slider value
+                    rect = slider_rects[dragging_slider]
+                    label, attr, minv, maxv = slider_labels[dragging_slider]
+                    rel_y = max(0, min(rect.height, event.pos[1] - rect.y))
+                    value = maxv - (rel_y / rect.height) * (maxv - minv)
+                    setattr(squaregrid, attr, value)
+                elif dragging and last_mouse_pos:
                     dx = event.pos[0] - last_mouse_pos[0]
                     dy = event.pos[1] - last_mouse_pos[1]
                     cam_x -= dx
@@ -224,6 +257,59 @@ def display_square_grid(squaregrid, cell_size=40):
         glMatrixMode(GL_MODELVIEW)
         glPushMatrix()
         glLoadIdentity()
+
+        # Draw sliders using OpenGL (so they are visible in OpenGL mode)
+        for i, rect in enumerate(slider_rects):
+            label, attr, minv, maxv = slider_labels[i]
+            # Draw slider background (vertical bar)
+            glColor3ub(60, 60, 60)
+            glBegin(GL_QUADS)
+            glVertex2f(rect.x, rect.y)
+            glVertex2f(rect.x + rect.width, rect.y)
+            glVertex2f(rect.x + rect.width, rect.y + rect.height)
+            glVertex2f(rect.x, rect.y + rect.height)
+            glEnd()
+            # Draw slider handle
+            value = getattr(squaregrid, attr, minv)
+            rel = int((maxv - value) / (maxv - minv) * rect.height)
+            handle_y = rect.y + rel
+            glColor3ub(180, 180, 80)
+            glBegin(GL_QUADS)
+            glVertex2f(rect.x, handle_y-4)
+            glVertex2f(rect.x + rect.width, handle_y-4)
+            glVertex2f(rect.x + rect.width, handle_y+4)
+            glVertex2f(rect.x, handle_y+4)
+            glEnd()
+            # Draw label and value as OpenGL textures
+            label_surface = button_font.render(label, True, (255,255,255))
+            value_surface = button_font.render(f"{value:.2f}", True, (255,255,255))
+            for surf, x, y in [
+                (label_surface, rect.x - label_surface.get_width() - 10, rect.y + rect.height//2 - label_surface.get_height()//2),
+                (value_surface, rect.x + rect.width + 10, rect.y + rect.height//2 - value_surface.get_height()//2)
+            ]:
+                tex_data = pygame.image.tostring(surf, "RGBA", True)
+                tex_id = glGenTextures(1)
+                glBindTexture(GL_TEXTURE_2D, tex_id)
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf.get_width(), surf.get_height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+                glEnable(GL_TEXTURE_2D)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                glColor4f(1, 1, 1, 1)
+                glBegin(GL_QUADS)
+                glTexCoord2f(0, 1)
+                glVertex2f(x, y)
+                glTexCoord2f(1, 1)
+                glVertex2f(x + surf.get_width(), y)
+                glTexCoord2f(1, 0)
+                glVertex2f(x + surf.get_width(), y + surf.get_height())
+                glTexCoord2f(0, 0)
+                glVertex2f(x, y + surf.get_height())
+                glEnd()
+                glDisable(GL_TEXTURE_2D)
+                glDisable(GL_BLEND)
+                glDeleteTextures([tex_id])
 
         # Draw save button (top left) using OpenGL
         glColor3ub(60, 180, 60)
