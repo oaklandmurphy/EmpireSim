@@ -20,7 +20,8 @@ def display_square_grid(squaregrid, cell_size=40):
 	slider_labels = [
 		("Conquest Difficulty", "conquest_difficulty", 1.1, 5.0),
 		("Nation Stability", "nation_stability", 0.0, 1.0),
-		("Solidarity Spread", "solidarity_spread_rate", 0.0, 1.0),
+		("Solidarity Spread Rate", "solidarity_spread_rate", 0.0, 1.0),
+		("Conquest Assimilation Rate", "conquest_assimilation_rate", 0.0, 1.0)
 	]
 	dragging_slider = None
 	"""
@@ -150,9 +151,11 @@ def display_square_grid(squaregrid, cell_size=40):
 			b = np.full_like(r, 40)
 			color = np.stack([r, g, b], axis=-1)
 		elif attr == 'solidarity':
-			r = (255 * arr).astype(np.uint8)
-			g = (255 * (1 - arr)).astype(np.uint8)
-			b = np.full_like(r, 128)
+			minv, maxv = 0, 1
+			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
+			r = (255 * (1 - norm)).astype(np.uint8)
+			g = (255 * norm).astype(np.uint8)
+			b = np.full_like(r, 40)
 			color = np.stack([r, g, b], axis=-1)
 		elif attr == 'nation':
 			color = np.zeros((squaregrid.width, squaregrid.height, 3), dtype=np.uint8)
@@ -251,6 +254,18 @@ def display_square_grid(squaregrid, cell_size=40):
 					if not attr_clicked:
 						dragging = True
 						last_mouse_pos = event.pos
+				elif event.button == 4:
+					# Zoom in
+					cam_x = cam_x + squaregrid.width
+					cam_y = cam_y + squaregrid.width
+					cell_size = min(200, cell_size + 2)
+					
+				elif event.button == 5:
+					# Zoom out
+					cam_x = cam_x - squaregrid.width
+					cam_y = cam_y - squaregrid.width
+					cell_size = max(2, cell_size - 2)
+					
 			elif event.type == pygame.MOUSEBUTTONUP:
 				if event.button == 1:
 					dragging = False
