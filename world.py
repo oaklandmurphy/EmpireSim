@@ -22,6 +22,10 @@ class World:
 		self.num_nations = 0
 		self.nation_colors = {0: (200, 200, 200)}  # 0: unassigned
 
+		self.conquest_difficulty = 2  # Higher means harder to conquer
+		self.solidarity_spread_rate = 0.33  # Chance to copy solidarity from most influential neighbor
+		self.nation_stability = 0.8  # Higher means harder to rebel
+
 		# Generate Perlin noise for each cell
 		self.generate_perlin_noise_on_squaregrid(scale=2, seed=42, attribute='terrain', variability=self.terrain_variablility)
 		self.terrain = self.terrain**2 / self.terrain_variablility
@@ -68,20 +72,23 @@ class World:
 	
 	def generate_perlin_noise_on_squaregrid(self, scale=0.1, seed=0, attribute='noise', variability=10):
 		"""
-		Generates Perlin noise values for each cell in the square grid and stores them as a variable.
-		Output is normalized to integers between 1 and 'variability'.
+		Vectorized Perlin noise generation for the grid.
 		"""
 		noise = PerlinNoise(octaves=4, seed=seed)
-		for x in range(self.width):
-			for y in range(self.height):
-				px = x * scale
-				py = y * scale
-				raw_value = noise([px / self.width, py / self.height])
-				# Normalize to [0, 1]
-				normalized = (raw_value + 1) / 2
-				# Scale to [1, variability] as integer
-				output = int(normalized * (variability - 1)) + 1
-				self.set_cell_var(x, y, attribute, output)
+		xs, ys = np.meshgrid(np.arange(self.width), np.arange(self.height), indexing='ij')
+		px = xs * scale / self.width
+		py = ys * scale / self.height
+		def noise_func(x, y):
+			return noise([x, y])
+		vnoise = np.vectorize(noise_func)
+		raw_values = vnoise(px, py)
+		normalized = (raw_values + 1) / 2
+		output = (normalized * (variability - 1)).astype(int) + 1
+		arr = getattr(self, attribute, None)
+		if arr is not None and hasattr(arr, '__getitem__'):
+			arr[:, :] = output
+		else:
+			raise KeyError(f"Unknown key: {attribute}")
 
 	def calc_distance_matrix(self):
 		"""
@@ -133,29 +140,40 @@ class World:
 
 	def calc_fitness_of_world(self):
 		"""
-		Calculates fitness for all cells in the world based on their influence and nation.
+		Vectorized calculation of fitness for all cells in the world based on their influence and nation.
 		"""
-		self.fitness.fill(0.0)  # Reset fitness to base value
+		self.fitness.fill(0.0)
+		# For each cell, add its influence to all cells of the same nation, weighted by inverse distance
 		for x in range(self.width):
 			for y in range(self.height):
-
-				self.calc_fitness(x=x, y=y)
+				source_nation = self.nation[x, y]
+				if source_nation == 0:
+					continue
+				influence_val = self.influence[x, y]
+				solidarity_val = self.solidarity[x, y]
+				mask = (self.nation == source_nation) & (self.nation != 0)
+				distances = self.distance_matrix[x, y].copy()
+				distances[x, y] = 1
+				weights = np.zeros_like(distances)
+				weights[mask] = 1.0 / distances[mask]
+				self.fitness[mask] += influence_val * solidarity_val * weights[mask]
 
 	def calc_influence(self):
 		self.influence = np.zeros((self.width, self.height), dtype=float)
+		# Vectorized update for cells with nation != 0 (self influence part)
+		mask = (self.nation != 0)
+		self.influence[mask] += 1 * (1 - self.solidarity[mask])
+		# Neighbor influence is still done in a loop (nontrivial to vectorize due to neighbor structure)
 		for x in range(self.width):
 			for y in range(self.height):
 				if self.nation[x, y] == 0:
 					continue
-				# rate = self.econ_growth_rate / max(self.influence[x, y], .5)
-				rate = 1
 				neighbors = self.neighbors(x, y)
-				self.influence[x, y] += rate * (1 - self.get_cell_var(x, y, 'solidarity'))
 				for nx, ny in neighbors:
 					if self.nation[nx, ny] == self.nation[x, y]:
-						self.influence[x, y] += rate * self.get_cell_var(nx, ny, 'solidarity')
+						self.influence[x, y] += self.solidarity[nx, ny]
 					else:
-						self.influence[x, y] += rate * self.get_cell_var(nx, ny, 'solidarity') / 4
+						self.influence[x, y] += self.solidarity[nx, ny] / 4
 	
 	def conquer(self):
 		for x in range(self.width):
@@ -166,7 +184,7 @@ class World:
 				new_solidarity = self.solidarity[x, y]
 				conquered = False
 				for nx, ny in neighbors:
-					if self.nation[x, y] != self.nation[nx,ny] and self.fitness[nx, ny] > max_fitness * 2:
+					if self.nation[x, y] != self.nation[nx,ny] and self.fitness[nx, ny] > max_fitness * self.conquest_difficulty:
 						max_fitness = self.influence[nx, ny]
 						new_nation = self.nation[nx, ny]
 						new_solidarity = self.solidarity[nx, ny]
@@ -191,7 +209,7 @@ class World:
 						if infl > max_infl:
 							max_infl = infl
 							max_infl_n = (nx, ny)
-					if max_infl_n and random.random() < 0.2:
+					if max_infl_n and random.random() < self.solidarity_spread_rate:
 						self.solidarity[x, y] = self.solidarity[max_infl_n]
 				mutate = random.random()
 				if mutate > 0.9:
@@ -201,7 +219,7 @@ class World:
 
 				nation_id = self.nation[x, y]
 				rebellion_attempt = random.random()
-				if nation_id != 0 and nation_id in rebel_threshold and rebel_threshold[nation_id] <= .2 and rebellion_attempt > rebel_threshold[nation_id] and rebellion_attempt < self.solidarity[x, y]:
+				if nation_id != 0 and nation_id in rebel_threshold and rebel_threshold[nation_id] <= (1 - self.nation_stability) and rebellion_attempt > rebel_threshold[nation_id] and rebellion_attempt < self.solidarity[x, y]:
 					tyrant = self.nation[x, y]
 					self.create_nation(x, y, initial_influence=10.0, initial_solidarity=1)
 					self.create_rebellion(x, y, threshold=0.4, tyrant_nation=tyrant)
@@ -273,8 +291,3 @@ class World:
 		self.calc_fitness_of_world()
 		self.update_solidarity()
 		self.conquer()
-
-
-
-from opengl_draw import display_square_grid
-
