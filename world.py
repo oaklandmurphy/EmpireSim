@@ -182,13 +182,11 @@ class World:
 				max_fitness = self.fitness[x, y]
 				new_nation = self.nation[x, y]
 				new_solidarity = self.solidarity[x, y]
-				conquered = False
 				for nx, ny in neighbors:
 					if self.nation[x, y] != self.nation[nx,ny] and self.fitness[nx, ny] > max_fitness * self.conquest_difficulty:
 						max_fitness = self.influence[nx, ny]
 						new_nation = self.nation[nx, ny]
 						new_solidarity = self.solidarity[nx, ny]
-						conquered = True
 				self.nation[x, y] = new_nation
 				if random.random() < 0.5:
 					self.solidarity[x,y] = new_solidarity
