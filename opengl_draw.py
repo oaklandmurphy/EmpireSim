@@ -6,7 +6,7 @@ import numpy as np
 import random
 import numpy as np
 import datetime
-from save_and_load import save_world_to_json
+from save_and_load import save_world_npz
 
 import pygame
 from OpenGL.GL import *
@@ -138,6 +138,7 @@ def display_square_grid(squaregrid, cell_size=40):
 		attr = selected_attribute
 		arr = getattr(squaregrid, attr)
 		arr = np.asarray(arr)
+		print()
 		if attr == 'terrain':
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
@@ -163,12 +164,19 @@ def display_square_grid(squaregrid, cell_size=40):
 				mask = (squaregrid.nation == nation_id)
 				color[mask] = col
 			color = color
+		elif attr == 'influence':
+			minv, maxv = 0, 5
+			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
+			r = (255 * norm).astype(np.uint8)
+			g = (255 * norm).astype(np.uint8)
+			b = (255 * norm).astype(np.uint8)
+			color = np.stack([r, g, b], axis=-1)
 		else:
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
 			r = (255 * norm).astype(np.uint8)
-			g = (255 * (1 - norm)).astype(np.uint8)
-			b = np.full_like(r, 128)
+			g = (255 * norm).astype(np.uint8)
+			b = (255 * norm).astype(np.uint8)
 			color = np.stack([r, g, b], axis=-1)
 		# Transpose to (height, width, 3) for OpenGL
 		return np.transpose(color, (1, 0, 2))
@@ -246,8 +254,8 @@ def display_square_grid(squaregrid, cell_size=40):
 					# Check save button (top left)
 					if save_button_x <= mouse_x <= save_button_x + save_button_width and save_button_y <= mouse_y <= save_button_y + save_button_height:
 						timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-						filename = f'saved_maps/saved_map_{timestamp}.json'
-						save_world_to_json(squaregrid, filename)
+						filename = f'saved_maps/saved_map_{timestamp}.npz'
+						save_world_npz(squaregrid, filename)
 						print(f'Map saved to {filename}')
 						attr_clicked = True
 					# Otherwise, start dragging for panning
