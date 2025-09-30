@@ -19,7 +19,7 @@ class World:
 		self.fitness = np.full((width, height), 1, dtype=float)
 		self.nation = np.zeros((width, height), dtype=int)
 
-		self.terrain_variability = 10
+		self.terrain_variability = 50
 		self.econ_growth_rate = 1.0
 		self.num_nations = 0
 		self.nation_colors = {0: (200, 200, 200)}  # 0: unassigned
@@ -30,8 +30,8 @@ class World:
 		self.conquest_assimilation_rate = 0.5  # Chance to copy solidarity from conquering nation
 
 		# Generate Perlin noise for each cell
-		self.generate_perlin_noise_on_squaregrid(scale=2, seed=42, attribute='terrain', variability=self.terrain_variability)
-		self.terrain = self.terrain**2
+		self.generate_perlin_noise_on_squaregrid(scale=6, seed=42, attribute='terrain', variability=self.terrain_variability)
+		
 
 		if distance_matrix is not None:
 			self.distance_matrix = distance_matrix
@@ -69,11 +69,11 @@ class World:
 				result.append((nx, ny))
 		return result
 	
-	def generate_perlin_noise_on_squaregrid(self, scale=0.1, seed=0, attribute='noise', variability=10):
+	def generate_perlin_noise_on_squaregrid(self, scale=2, seed=0, attribute='noise', variability=10):
 		"""
 		Vectorized Perlin noise generation for the grid.
 		"""
-		noise = PerlinNoise(octaves=4, seed=seed)
+		noise = PerlinNoise(octaves=1, seed=seed)
 		xs, ys = np.meshgrid(np.arange(self.width), np.arange(self.height), indexing='ij')
 		px = xs * scale / self.width
 		py = ys * scale / self.height
@@ -118,38 +118,6 @@ class World:
 		dist_matrix = dist_flat.reshape(h, w, h, w)
 
 		return dist_matrix
-
-
-	# def calc_distance_matrix(self):
-	# 	"""
-	# 	Returns a 4D numpy array dist[x1, y1, x2, y2] with the minimum cost from (x1, y1) to (x2, y2) using Dijkstra's algorithm,
-	# 	where terrain value is the cost to enter a cell.
-	# 	"""
-	# 	import heapq
-	# 	dist = np.full((self.width, self.height, self.width, self.height), np.inf, dtype=float)
-	# 	for x1 in range(self.width):
-	# 		for y1 in range(self.height):
-	# 			print(f"Calculating distances from ({x1}, {y1})")
-	# 			# Dijkstra's algorithm from (x1, y1) to all other cells
-	# 			visited = np.zeros((self.width, self.height), dtype=bool)
-	# 			local_dist = np.full((self.width, self.height), np.inf, dtype=float)
-	# 			local_dist[x1, y1] = 0.0
-	# 			heap = [(0.0, (x1, y1))]
-	# 			while heap:
-	# 				curr_cost, (cx, cy) = heapq.heappop(heap)
-	# 				if visited[cx, cy]:
-	# 					continue
-	# 				visited[cx, cy] = True
-	# 				for nx, ny in self.neighbors(cx, cy):
-	# 					new_cost = curr_cost + self.terrain[nx, ny]
-	# 					if new_cost < local_dist[nx, ny]:
-	# 						local_dist[nx, ny] = new_cost
-	# 						heapq.heappush(heap, (new_cost, (nx, ny)))
-	# 			# Store distances for all destinations from (x1, y1)
-	# 			for x2 in range(self.width):
-	# 				for y2 in range(self.height):
-	# 					dist[x1, y1, x2, y2] = local_dist[x2, y2]
-	# 	return dist
 
 	def calc_fitness(self):
 		self.fitness.fill(0.0)

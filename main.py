@@ -1,5 +1,4 @@
 import random
-import json
 import numpy as np
 from world import World
 from opengl_draw import display_square_grid
@@ -7,8 +6,8 @@ from save_and_load import load_world_npz
 
 def main():
     # Load or create a world
-    world = load_world_npz('saved_maps/120x80_basic.npz')
-    # world = World(120, 80)
+    # world = load_world_npz('saved_maps/120x80_basic.npz')
+    world = World(120, 80)
 
     # Create nations in random locations
     coords = set()
