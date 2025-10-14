@@ -180,48 +180,46 @@ class World:
 			self.influence[:, :-1][diff_mask] += self.solidarity[:, :-1][diff_mask] / 4
 	
 	def conquer(self):
+		# Copies of arrays to modify
 		new_nation = self.nation.copy()
 		new_solidarity = self.solidarity.copy()
-		w, h = self.height, self.width
 
-		directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right
+		h, w = self.nation.shape
+		dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
-		for dx, dy in directions:
-			# Start with zeros
-			f_shifted = np.zeros_like(self.fitness)
-			n_shifted = np.zeros_like(self.nation)
-			s_shifted = np.zeros_like(self.solidarity)
+		# Roll each property in all directions
+		f_neighbors = np.stack([np.roll(self.fitness, shift, axis=(0, 1)) for shift in dirs])
+		n_neighbors = np.stack([np.roll(self.nation, shift, axis=(0, 1)) for shift in dirs])
+		s_neighbors = np.stack([np.roll(self.solidarity, shift, axis=(0, 1)) for shift in dirs])
 
-			# Determine valid source and target slices
-			if dx == -1:
-				f_shifted[:-1, :] = self.fitness[1:, :]
-				n_shifted[:-1, :] = self.nation[1:, :]
-				s_shifted[:-1, :] = self.solidarity[1:, :]
-			elif dx == 1:
-				f_shifted[1:, :] = self.fitness[:-1, :]
-				n_shifted[1:, :] = self.nation[:-1, :]
-				s_shifted[1:, :] = self.solidarity[:-1, :]
-			elif dy == -1:
-				f_shifted[:, :-1] = self.fitness[:, 1:]
-				n_shifted[:, :-1] = self.nation[:, 1:]
-				s_shifted[:, :-1] = self.solidarity[:, 1:]
-			elif dy == 1:
-				f_shifted[:, 1:] = self.fitness[:, :-1]
-				n_shifted[:, 1:] = self.nation[:, :-1]
-				s_shifted[:, 1:] = self.solidarity[:, :-1]
+		# Zero out wrapped edges so they don't influence across borders
+		f_neighbors[0, -1, :] = f_neighbors[1, 0, :] = f_neighbors[2, :, -1] = f_neighbors[3, :, 0] = 0
+		n_neighbors[0, -1, :] = n_neighbors[1, 0, :] = n_neighbors[2, :, -1] = n_neighbors[3, :, 0] = 0
 
-			# Conquest condition
-			diff_nation = (self.nation != n_shifted) & (n_shifted != 0)
-			stronger = f_shifted > self.fitness * self.conquest_difficulty
-			mask = diff_nation & stronger
+		# Determine conquest eligibility
+		diff = (n_neighbors != self.nation) & (n_neighbors != 0)
+		stronger = f_neighbors > (self.fitness * self.conquest_difficulty)
+		can_conquer = diff & stronger
 
-			# Apply updates
-			new_nation[mask] = n_shifted[mask]
+		# Pick the neighbor with the *highest fitness* among conquerors
+		f_neighbors_masked = np.where(can_conquer, f_neighbors, -np.inf)
+		best_dir = np.argmax(f_neighbors_masked, axis=0)
+		conquer_mask = np.any(can_conquer, axis=0)
 
-			rand_vals = np.random.rand(h, w)
-			assimilation_mask = mask & (rand_vals < self.conquest_assimilation_rate)
-			new_solidarity[assimilation_mask] = s_shifted[assimilation_mask]
+		# Gather values from best conquering neighbor using fancy indexing
+		r_idx, c_idx = np.indices(self.nation.shape)
+		best_n = n_neighbors[best_dir, r_idx, c_idx]
+		best_s = s_neighbors[best_dir, r_idx, c_idx]
 
+		# Apply conquests
+		new_nation[conquer_mask] = best_n[conquer_mask]
+
+		# Assimilation of solidarity
+		assimilation_mask = conquer_mask & (np.random.rand(h, w) < self.conquest_assimilation_rate)
+		new_solidarity[assimilation_mask] = best_s[assimilation_mask]
+
+
+		# Commit updates
 		self.nation = new_nation
 		self.solidarity = new_solidarity
 

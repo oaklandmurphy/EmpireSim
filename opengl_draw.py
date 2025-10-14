@@ -43,7 +43,7 @@ def display_square_grid(squaregrid, cell_size=40):
 		slider_rects.append(pygame.Rect(x, y, slider_width, slider_height))
 
 	# UI Button setup (moved up to ensure button_font is defined before use)
-	attributes = ['influence', 'solidarity', 'terrain', 'fitness', 'nation']
+	attributes = ['nation', 'influence', 'solidarity', 'fitness', 'terrain']
 	selected_attribute = 'terrain'
 	button_height = 40
 	button_padding = 10
@@ -76,7 +76,7 @@ def display_square_grid(squaregrid, cell_size=40):
 		return tex_id, surf.get_width(), surf.get_height()
 
 	# Pre-render attribute button labels
-	for attr in ['influence', 'solidarity', 'terrain', 'fitness', 'nation']:
+	for attr in attributes:
 		label = button_font.render(attr.capitalize(), True, (255, 255, 255))
 		static_textures[f'attr_{attr}'] = create_texture_from_surface(label)
 	# Pre-render recalc, continuous, and save button labels
@@ -105,8 +105,7 @@ def display_square_grid(squaregrid, cell_size=40):
 		return int(px), int(py)
 
 	# UI Button setup
-	attributes = ['influence', 'solidarity', 'terrain', 'fitness', 'nation']
-	selected_attributes = set(['terrain'])
+	selected_attributes = set(['nation'])
 	button_height = 40
 	button_padding = 10
 	button_font = pygame.font.SysFont('Arial', 24)
@@ -174,9 +173,6 @@ def display_square_grid(squaregrid, cell_size=40):
 		else:
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
-			r = (255 * norm).astype(np.uint8)
-			g = (255 * norm).astype(np.uint8)
-			b = (255 * norm).astype(np.uint8)
 			color = np.stack([r, g, b], axis=-1)
 		# Transpose to (height, width, 3) for OpenGL
 		return np.transpose(color, (1, 0, 2))
