@@ -3,23 +3,28 @@ import numpy as np
 from perlin_noise import PerlinNoise
 from scipy.sparse import lil_matrix
 from scipy.sparse.csgraph import dijkstra
+from terrain import *
 
 
 class World:
 	
-	def __init__(self, width, height, distance_matrix=None):
+	def __init__(self, width, height, seed=42, distance_matrix=None):
 		"""
 		Initialize a square grid of given width and height using NumPy arrays.
 		"""
 		self.width = width
 		self.height = height
+		self.distance_matrix_base = np.zeros((width, height, width, height), dtype=float)
 		self.influence = np.zeros((width, height), dtype=float)
 		self.solidarity = np.zeros((width, height), dtype=float)
 		self.terrain = np.ones((width, height), dtype=int)
 		self.fitness = np.full((width, height), 1, dtype=float)
 		self.nation = np.zeros((width, height), dtype=int)
 
-		self.terrain_variability = 50
+		self.seed = seed
+		random.seed(seed)
+
+		self.terrain_variability = 20.0
 		self.econ_growth_rate = 1.0
 		self.num_nations = 0
 		self.nation_colors = {0: (200, 200, 200)}  # 0: unassigned
@@ -30,13 +35,24 @@ class World:
 		self.conquest_assimilation_rate = 0.5  # Chance to copy solidarity from conquering nation
 
 		# Generate Perlin noise for each cell
-		self.generate_perlin_noise_on_squaregrid(scale=6, seed=42, attribute='terrain', variability=self.terrain_variability)
+		# self.generate_perlin_noise_on_squaregrid(scale=6, seed=42, attribute='terrain', variability=self.terrain_variability)
+		self.plate_tectonics = PlateTectonics(width, height, seed=seed)
+		# self.terrain = self.plate_tectonics.elevation
+		self.terrain = ((self.plate_tectonics.elevation - np.min(self.plate_tectonics.elevation)) / (np.max(self.plate_tectonics.elevation) - np.min(self.plate_tectonics.elevation)) * (self.terrain_variability - 1)).astype(int) + 1
 		
+		self.tectonic_plates = self.plate_tectonics.plate_id
+		self.tectonic_plate_drift = self.plate_tectonics.plate_motion_map
+		self.sea_level = self.plate_tectonics.sea_level * self.terrain_variability
+		self.land_mask = (self.terrain >= self.sea_level).astype(int)
 
 		if distance_matrix is not None:
-			self.distance_matrix = distance_matrix
+			self.distance_matrix_base = distance_matrix
 		else:
-			self.distance_matrix = self.calc_distance_matrix()
+			self.distance_matrix_base = self.calc_distance_matrix()
+
+
+		self.distance_matrix = self.distance_matrix_base.copy()
+
 
 	def set_cell_var(self, x, y, key, value):
 		arr = getattr(self, key, None)
@@ -89,25 +105,65 @@ class World:
 		else:
 			raise KeyError(f"Unknown key: {attribute}")
 
+	# def calc_distance_matrix(self):
+	# 	"""
+	# 	Computes all-pairs shortest paths on the grid using orthogonal neighbors.
+	# 	The cost to enter a cell is given by self.terrain[nx, ny].
+	# 	Returns a 4D array dist[x1, y1, x2, y2].
+	# 	"""
+	# 	h, w = self.nation.shape
+	# 	N = h * w  # total number of nodes
+
+	# 	# Map 2D coordinates to 1D index
+	# 	def idx(x, y):
+	# 		return x * w + y
+
+	# 	# Create sparse adjacency matrix
+	# 	graph = lil_matrix((N, N), dtype=float)
+
+	# 	for x in range(h):
+	# 		for y in range(w):
+	# 			for nx, ny in self.neighbors(x, y):
+	# 				# Cost to move from (x,y) to neighbor = terrain at neighbor
+	# 				graph[idx(x, y), idx(nx, ny)] = self.terrain[nx, ny]
+
+	# 	# Compute all-pairs shortest paths (Dijkstra)
+	# 	dist_flat = dijkstra(csgraph=graph, directed=True)
+
+	# 	# Reshape flat distances to 4D array
+	# 	dist_matrix = dist_flat.reshape(h, w, h, w)
+
+	# 	return dist_matrix
+	
 	def calc_distance_matrix(self):
 		"""
 		Computes all-pairs shortest paths on the grid using orthogonal neighbors.
 		The cost to enter a cell is given by self.terrain[nx, ny].
+		Water (elevation < sea_level) is impassable.
 		Returns a 4D array dist[x1, y1, x2, y2].
 		"""
+		from scipy.sparse import lil_matrix
+		from scipy.sparse.csgraph import dijkstra
+
 		h, w = self.nation.shape
 		N = h * w  # total number of nodes
 
-		# Map 2D coordinates to 1D index
 		def idx(x, y):
 			return x * w + y
 
 		# Create sparse adjacency matrix
 		graph = lil_matrix((N, N), dtype=float)
 
+		# Precompute walkable mask
+		walkable = self.terrain >= self.sea_level
+
 		for x in range(h):
 			for y in range(w):
+				if not walkable[x, y]:
+					continue  # cannot travel from water
 				for nx, ny in self.neighbors(x, y):
+					if not walkable[nx, ny]:
+						continue  # cannot travel into water
 					# Cost to move from (x,y) to neighbor = terrain at neighbor
 					graph[idx(x, y), idx(nx, ny)] = self.terrain[nx, ny]
 
@@ -179,6 +235,50 @@ class World:
 			self.influence[:, :-1][same_mask] += self.solidarity[:, 1:][same_mask]
 			self.influence[:, :-1][diff_mask] += self.solidarity[:, :-1][diff_mask] / 4
 	
+	# def conquer(self):
+	# 	# Copies of arrays to modify
+	# 	new_nation = self.nation.copy()
+	# 	new_solidarity = self.solidarity.copy()
+
+	# 	h, w = self.nation.shape
+	# 	dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+	# 	# Roll each property in all directions
+	# 	f_neighbors = np.stack([np.roll(self.fitness, shift, axis=(0, 1)) for shift in dirs])
+	# 	n_neighbors = np.stack([np.roll(self.nation, shift, axis=(0, 1)) for shift in dirs])
+	# 	s_neighbors = np.stack([np.roll(self.solidarity, shift, axis=(0, 1)) for shift in dirs])
+
+	# 	# Zero out wrapped edges so they don't influence across borders
+	# 	f_neighbors[0, -1, :] = f_neighbors[1, 0, :] = f_neighbors[2, :, -1] = f_neighbors[3, :, 0] = 0
+	# 	n_neighbors[0, -1, :] = n_neighbors[1, 0, :] = n_neighbors[2, :, -1] = n_neighbors[3, :, 0] = 0
+
+	# 	# Determine conquest eligibility
+	# 	diff = (n_neighbors != self.nation) & (n_neighbors != 0)
+	# 	stronger = f_neighbors > (self.fitness * self.conquest_difficulty)
+	# 	can_conquer = diff & stronger
+
+	# 	# Pick the neighbor with the *highest fitness* among conquerors
+	# 	f_neighbors_masked = np.where(can_conquer, f_neighbors, -np.inf)
+	# 	best_dir = np.argmax(f_neighbors_masked, axis=0)
+	# 	conquer_mask = np.any(can_conquer, axis=0)
+
+	# 	# Gather values from best conquering neighbor using fancy indexing
+	# 	r_idx, c_idx = np.indices(self.nation.shape)
+	# 	best_n = n_neighbors[best_dir, r_idx, c_idx]
+	# 	best_s = s_neighbors[best_dir, r_idx, c_idx]
+
+	# 	# Apply conquests
+	# 	new_nation[conquer_mask] = best_n[conquer_mask]
+
+	# 	# Assimilation of solidarity
+	# 	assimilation_mask = conquer_mask & (np.random.rand(h, w) < self.conquest_assimilation_rate)
+	# 	new_solidarity[assimilation_mask] = best_s[assimilation_mask]
+
+
+	# 	# Commit updates
+	# 	self.nation = new_nation
+	# 	self.solidarity = new_solidarity
+
 	def conquer(self):
 		# Copies of arrays to modify
 		new_nation = self.nation.copy()
@@ -199,7 +299,8 @@ class World:
 		# Determine conquest eligibility
 		diff = (n_neighbors != self.nation) & (n_neighbors != 0)
 		stronger = f_neighbors > (self.fitness * self.conquest_difficulty)
-		can_conquer = diff & stronger
+		not_water = self.land_mask.astype(bool)[None, :, :]	  # Only land cells can be conquered
+		can_conquer = diff & stronger & not_water # Only land cells can be conquered
 
 		# Pick the neighbor with the *highest fitness* among conquerors
 		f_neighbors_masked = np.where(can_conquer, f_neighbors, -np.inf)
@@ -222,7 +323,6 @@ class World:
 		# Commit updates
 		self.nation = new_nation
 		self.solidarity = new_solidarity
-
 
 	def update_solidarity(self):
 		"""
@@ -376,3 +476,6 @@ class World:
 		self.calc_fitness()
 		self.update_solidarity()
 		self.conquer()
+
+		self.plate_tectonics.sea_level = (1.0 * self.sea_level) / self.terrain_variability
+		self.land_mask = (self.terrain >= self.sea_level).astype(int)

@@ -2,15 +2,10 @@ import pygame
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import numpy as np
-
-import random
-import numpy as np
 import datetime
 from save_and_load import save_world_npz
 
-import pygame
-from OpenGL.GL import *
-from OpenGL.GLU import *
+
 
 def display_square_grid(squaregrid, cell_size=40):
 	# --- Slider setup ---
@@ -21,7 +16,8 @@ def display_square_grid(squaregrid, cell_size=40):
 		("Conquest Difficulty", "conquest_difficulty", 1.1, 5.0),
 		("Nation Stability", "nation_stability", 0.0, 1.0),
 		("Solidarity Spread Rate", "solidarity_spread_rate", 0.0, 1.0),
-		("Conquest Assimilation Rate", "conquest_assimilation_rate", 0.0, 1.0)
+		("Conquest Assimilation Rate", "conquest_assimilation_rate", 0.0, 1.0),
+		("Sea Level", "sea_level", 0, squaregrid.terrain_variability)
 	]
 	dragging_slider = None
 	"""
@@ -43,7 +39,7 @@ def display_square_grid(squaregrid, cell_size=40):
 		slider_rects.append(pygame.Rect(x, y, slider_width, slider_height))
 
 	# UI Button setup (moved up to ensure button_font is defined before use)
-	attributes = ['nation', 'influence', 'solidarity', 'fitness', 'terrain']
+	attributes = ['nation', 'influence', 'solidarity', 'fitness', 'terrain', 'tectonic_plates', 'tectonic_plate_drift']
 	selected_attribute = 'terrain'
 	button_height = 40
 	button_padding = 10
@@ -142,7 +138,8 @@ def display_square_grid(squaregrid, cell_size=40):
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
 			green = (220 - 120 * norm).astype(np.uint8)
-			color = np.stack([np.full_like(green, 40), green, np.full_like(green, 40)], axis=-1)
+			blue = (255 * (arr < squaregrid.sea_level)).astype(np.uint8)
+			color = np.stack([np.full_like(green, 40), green, blue], axis=-1)
 		elif attr == 'fitness':
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
@@ -170,9 +167,18 @@ def display_square_grid(squaregrid, cell_size=40):
 			g = (255 * norm).astype(np.uint8)
 			b = (255 * norm).astype(np.uint8)
 			color = np.stack([r, g, b], axis=-1)
+		elif attr == 'tectonic_plate_drift':
+			minv, maxv = 0, 5
+			r = (255 * arr[..., 0]).astype(np.uint8)
+			g = (np.zeros_like(arr[..., 0])).astype(np.uint8)
+			b = (255 * arr[..., 1]).astype(np.uint8)
+			color = np.stack([r, g, b], axis=-1)
 		else:
 			minv, maxv = np.min(arr), np.max(arr)
 			norm = (arr - minv) / (maxv - minv) if maxv > minv else np.zeros_like(arr)
+			r = (255 * norm).astype(np.uint8)
+			g = (255 * norm).astype(np.uint8)
+			b = (255 * norm).astype(np.uint8)
 			color = np.stack([r, g, b], axis=-1)
 		# Transpose to (height, width, 3) for OpenGL
 		return np.transpose(color, (1, 0, 2))
@@ -606,7 +612,10 @@ def display_square_grid(squaregrid, cell_size=40):
 				f"solidarity: {squaregrid.solidarity[x, y]:.2f}",
 				f"terrain: {squaregrid.terrain[x, y]}",
 				f"fitness: {squaregrid.fitness[x, y]:.2f}",
-				f"nation: {squaregrid.nation[x, y]}"
+				f"nation: {squaregrid.nation[x, y]}",
+				f"tectonic plate: {squaregrid.tectonic_plates[x, y]}",
+				f"tectonic drift: {squaregrid.tectonic_plate_drift[x, y]}",
+				f"land_mask: {squaregrid.land_mask[x, y]}"
 			]
 			surfaces = [tooltip_font.render(line, True, tooltip_fg, tooltip_bg) for line in info]
 			width = max(s.get_width() for s in surfaces) + 10
